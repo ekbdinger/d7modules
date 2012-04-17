@@ -1,0 +1,8 @@
+/* default css to get a 3 column layout */
+.views-quicksand {
+  float: left;
+  width: 32%;
+  margin-right: 5px;
+  height: 300px;
+  overflow: hidden;
+}

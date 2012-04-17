@@ -1,0 +1,38 @@
+<?php
+
+/**
+ * Implements hook_help().
+ */
+function views_quicksand_help($path, $arg) {
+  switch ($path) {
+    case 'admin/help#views_quicksand':
+      $output = '<p>'
+              . t('The Views Quicksand module is a Views style plugin that '
+                      . 'displays the results in a JQuery Quicksand style.')
+              . '</p>';
+      return $output;
+  }
+}
+
+/**
+ * Template function for views_quicksand style plugin.
+ *
+ * @param array $vars
+ *  Array of template variables.
+ *
+ * The JS file is loaded within render() in views_quicksand_style_plugin.inc .
+ */
+function template_preprocess_views_view_quicksand(&$vars) {
+  // inherit the normal unformatted classes.
+  template_preprocess_views_view_unformatted($vars);
+
+  $vars['view_quicksand_id'] = 'views-quicksand-' . $vars['view']->name . '-'
+          . $vars['view']->current_display . '-header';
+}
+
+/**
+ * Implements hook_views_api().
+ */
+function views_quicksand_views_api() {
+  return array('api' => 2);
+}

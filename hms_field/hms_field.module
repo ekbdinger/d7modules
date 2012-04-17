@@ -1,0 +1,323 @@
+<?php
+/**
+ * @file
+ * Provides an hms_field functionality.
+ */
+
+
+/**
+ * Implements hook_field_info().
+ */
+function hms_field_field_info() {
+  return array(
+    'hms_field' => array(
+      'label' => t('Hours Minutes and Seconds'),
+      'description' => t('Store Hours minutes or Seconds'),
+      'translatable' => 0,
+      'settings' => array(),
+      'instance_settings' => array('format' => 'h:mm'),
+      'default_widget' => 'hms_default_widget',
+      'default_formatter' => 'hms_default_formatter',
+    ),
+  );
+}
+
+/**
+ * Implements hook_field_instance_settings_form().
+ */
+function hms_field_field_instance_settings_form($field, $instance) {
+  return array(
+    'format' => array(
+      '#type' => 'select',
+      '#title' => t('Input format'),
+      '#default_value' => $instance['settings']['format'],
+      '#options' => _hms_format_options(),
+      '#description' => t('The input format used for this field'),
+    )
+  );
+}
+
+/**
+ * Implements hook_field_widget_info().
+ */
+function hms_field_field_widget_info() {
+  return array(
+    'hms_default_widget' => array(
+      'label' => t('Hour Minutes and Seconds'),
+      'field types' => array('hms_field'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_field_is_empty().
+ */
+function hms_field_field_is_empty($item, $field) {
+  if ($item['value'] === '') {
+      return TRUE;
+  }
+  return FALSE;
+}
+
+/**
+ * Implements hook_field_widget_form().
+ */
+function hms_field_field_widget_form(&$form, &$form_state, $field, $instance, $langcode, $items, $delta, $element) {
+  $value = isset($items[$delta]['value']) ? $items[$delta]['value'] : '';
+  $format = $instance['settings']['format'];
+  $widget = $element;
+  $widget['#delta'] = $delta;
+
+  $widget += array(
+    '#type' => 'textfield',
+    '#default_value' => $value,
+    '#size' => 8,
+    '#maxlength' => 16,
+    '#format' => $format,
+    '#value_callback' => '_hms_widget_value_callback',
+  );
+
+  if (!isset($widget['description']) || !strlen($widget['description'])) {
+    $widget['#description'] = t('Input format: @format', array('@format' => $format));
+  }
+  if (!isset($widget['#process'])) {
+    $widget['#process'] = array();
+  }
+  if (!in_array('_hms_widget_process_callback', $widget['#process'])) {
+    $widget['#process'][] = '_hms_widget_process_callback';
+  }
+
+  $element['value'] = $widget;
+  return $element;
+}
+
+/**
+ * Implements hook_field_formatter_info().
+ */
+function hms_field_field_formatter_info() {
+  return array(
+    'hms_default_formatter' => array(
+      'label' => t('Hours Minutes and Seconds'),
+      'field types' => array('hms_field'),
+      'settings' => array('format' => 'h:mm', 'leading_zero' => TRUE),
+    ),
+  );
+}
+
+/**
+ * Implements hook_field_formatter_settings_summary().
+ */
+function hms_field_field_formatter_settings_summary($field, $instance, $view_mode) {
+  $display = $instance['display'][$view_mode];
+  $settings = $display['settings'];
+
+  $summary = '';
+
+  if ($display['type'] == 'hms_default_formatter') {
+    $summary .= t('Format: @format', array('@format' => $settings['format']));
+    $summary .= '<br>';
+    $summary .= t('Leading zero: @zero', array('@zero' => ($settings['leading_zero']?t('On'):t('Off'))));
+  }
+
+  return $summary;
+}
+
+/**
+ * Implements hook_field_formatter_settings_form().
+ */
+function hms_field_field_formatter_settings_form($field, $instance, $view_mode, $form, &$form_state) {
+  $display = $instance['display'][$view_mode];
+  $settings = $display['settings'];
+
+  $element = array();
+
+  if ($display['type'] == 'hms_default_formatter') {
+    $element['format'] = array(
+      '#type' => 'select',
+      '#title' => t('Display format'),
+      '#options' => _hms_format_options(),
+      '#description' => t('The display format used for this field'),
+      '#default_value' => $settings['format'],
+      '#required' => TRUE,
+    );
+    $element['leading_zero'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Leading zero'),
+      '#description' => t('Leading zero values will be displayed when this option is checked'),
+      '#default_value' => $settings['leading_zero'],
+    );
+  }
+
+  return $element;
+
+}
+
+/**
+ * Implements hook_field_formatter_view().
+ */
+function hms_field_field_formatter_view($entity_type, $entity, $field, $instance, $langcode, $items, $display) {
+  $element = array();
+  foreach ($items as $delta => $item) {
+    $element[$delta]['#theme'] = 'hms';
+    $element[$delta]['#value'] = $item['value'];
+    $element[$delta]['#format'] = $display['settings']['format'];
+    $element[$delta]['#leading_zero'] = $display['settings']['leading_zero'];
+  }
+  return $element;
+}
+
+/**
+ * Implements hook_theme().
+ */
+function hms_field_theme($existing, $type, $theme, $path) {
+  return array(
+    'hms' => array(
+      'variables' => array('value' => 0, 'format' => 'h:mm', 'leading_zero' => TRUE, 'running_since' => 0),
+    ),
+  );
+}
+
+/**
+ * Theme HMS
+ */
+function theme_hms($variables) {
+  $classes = array('hms', str_replace(':', '-', 'hms-format-' . $variables['format']));
+  if ($variables['running_since'] !== 0) {
+    // It is not possible to run longer then from 1970-01-01 00:00:01
+    $classes[] = 'hms-running';
+    // We also need to pass the running since value to JS.
+    // When format h is presented, the underlaying value can be at 3599
+    // The next second h needs to update.
+    // Be sure to pass running_since as time() (== GMT time)
+    if ($variables['running_since'] < 0) {
+      $variables['running_since'] = REQUEST_TIME;
+    }
+    $classes[] = 'hms-since-' . $variables['running_since'];
+    $classes[] = 'hms-offset-' . $variables['value'];
+    $classes[] = 'hms-leading_zero-' . $variables['leading_zero'];
+    _hms_add_running_js();
+  }
+  $html = '<span class="' . implode(' ' , $classes) . '">';
+  $html .= _hms_seconds_to_formatted($variables['value'], $variables['format'], $variables['leading_zero']);
+  $html .= '</span>';
+  return $html;
+}
+
+/**
+ * Helpers.
+ */
+
+ /**
+  * Returns possible format options.
+  */
+function _hms_format_options() {
+ $format = array('h:mm' => 'h:mm', 'h:mm:ss' => 'h:mm:ss', 'm:ss' => 'm:ss', 'h' => 'h', 'm' => 'm', 's' => 's');
+ drupal_alter('hms_format', $format);
+ return $format;
+}
+
+/**
+ * Returns the factor map of the format options.
+ */
+function _hms_factor_map() {
+  $factor = array('h' => 3600, 'm' => 60, 's' => 1);
+  drupal_alter('hms_factor', $factor);
+  return $factor;
+}
+
+/**
+ * Returns number of seconds form a formatted string.
+ */
+function _hms_formatted_to_seconds($str, $format='h:m:s') {
+  $factor = _hms_factor_map();
+  $format = explode(':', $format);
+  $minus = FALSE;
+  if (substr($str, 0, 1) == '-') {
+    $minus = TRUE;
+    $str = substr($str, 1);
+  }
+  $string = explode(':', $str);
+  $value = 0;
+  foreach($string as $key => $val) {
+    $factor_key = '';
+    if (isset($format[$key])) {
+      $factor_key = substr($format[$key], 0, 1);
+    }
+    if (isset($factor[$factor_key])) {
+      $value += round($val * $factor[$factor_key]);
+    }
+  }
+  if ($minus) {
+    $value = 0 - $value;
+  }
+  return $value;
+}
+
+/**
+ * Returns a formatted string form the number of seconds.
+ */
+function _hms_seconds_to_formatted($seconds, $format='h:mm', $leading_zero = TRUE) {
+  $factor = _hms_factor_map();
+  $values = array();
+  $left_over = $seconds;
+  $str = '';
+  if ($seconds < 0) {
+    $str .= '-';
+    $left_over = abs($left_over);
+  }
+  foreach ($factor as $key => $val) {
+    if ($left_over == 0) {
+      $values[$key] = 0;
+      continue;
+    }
+    $values[$key] = floor($left_over/$factor[$key]);
+    $left_over -= ($values[$key] * $factor[$key]);
+  }
+  $format = explode(':', $format);
+
+  foreach($format as $key) {
+    if (!$leading_zero && !$values[substr($key, 0, 1)]) {
+      continue;
+    }
+    $leading_zero = TRUE;
+    $str .= sprintf('%0'.strlen($key).'d', $values[substr($key, 0, 1)]) . ':';
+  }
+  if (!strlen($str)) {
+    $key = array_pop($format);
+    $str = sprintf('%0'.strlen($key).'d', 0) . ':';
+  }
+  return substr($str, 0, -1);
+}
+
+/**
+ * Widget helper to save input values as seconds.
+ */
+function _hms_widget_value_callback($element, $input = FALSE, $form_state) {
+  if ($input) {
+    return _hms_formatted_to_seconds($input, $element['#format']);
+  }
+}
+
+/**
+ * Widget helper to present seconds as human-readable formatted string.
+ */
+function _hms_widget_process_callback($element, &$form_state) {
+  if (!isset($element['#value'])) {
+    $element['#value'] = 0;
+  }
+  $element['#value'] = _hms_seconds_to_formatted($element['#value'], $element['#format']);
+  return $element;
+}
+
+/**
+ * Add js for running HMS fields.
+ */
+function _hms_add_running_js() {
+  static $hms_running_js_added;
+  if (isset($hms_running_js_added) && $hms_running_js_added) {
+    return;
+  }
+  $hms_running_js_added = TRUE;
+  drupal_add_js(drupal_get_path('module', 'hms_field') . '/hms_field.js');
+  drupal_add_js(array('hms_field' => array('servertime' => REQUEST_TIME, 'factor_map' => _hms_factor_map())), 'setting');
+}

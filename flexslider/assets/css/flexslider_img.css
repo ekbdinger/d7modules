@@ -1,0 +1,13 @@
+.flex-nav-container {
+  float: right;
+  position: relative;
+  width: 100%;
+}
+
+.flexslider ul.slides,
+.flex-nav-container ol.flex-control-nav,
+.flex-nav-container ul.flex-direction-nav,
+.flexslider ul.slides li img {
+  padding: 0px;
+  margin: 0px;
+}
