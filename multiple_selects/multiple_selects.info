@@ -5,9 +5,9 @@ dependency[] = options
 core = 7.x
 
 
-; Information added by drupal.org packaging script on 2012-03-26
-version = "7.x-1.0"
+; Information added by drupal.org packaging script on 2012-04-18
+version = "7.x-1.1"
 core = "7.x"
 project = "multiple_selects"
-datestamp = "1332769548"
+datestamp = "1334712410"
 

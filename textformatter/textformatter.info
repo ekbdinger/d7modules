@@ -1,15 +1,13 @@
-name = Field Text Formatter
+name = Text formatter
 description = "A field formatter for rendering values as HTML or comma-separated lists."
-package = Fields
 core = 7.x
-
-files[] = textformatter.module
+package = Fields
 
 dependencies[] = field
 
-; Information added by drupal.org packaging script on 2012-02-17
-version = "7.x-1.1"
+; Information added by drupal.org packaging script on 2012-04-24
+version = "7.x-1.2"
 core = "7.x"
 project = "textformatter"
-datestamp = "1329487844"
+datestamp = "1335257185"
 

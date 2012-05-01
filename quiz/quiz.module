@@ -1626,7 +1626,7 @@ function quiz_get_all_titles() {
     ->condition('n.type', 'quiz')
     ->addTag('node_access')
     ->execute()
-    ->fetchAll();
+    ->fetchAllKeyed();
 }
 
 /**
@@ -2098,7 +2098,7 @@ function quiz_take_quiz($quiz) {
     $session_data = $_SESSION['quiz_' . $quiz->nid];
     unset($_SESSION['quiz_' . $quiz->nid]);
     // NOTE: End actions might redirect the user somewhere. Code below this line might not get executed...
-    quiz_end_actions($quiz, $rid, $score, $session_data);
+    quiz_end_actions($quiz, $score, $session_data);
   }
 
   return $content;
@@ -2337,7 +2337,7 @@ function quiz_end_scoring($quiz, $rid) {
  * @param $score
  *  Score as a number
  */
-function quiz_end_actions($quiz, $rid, $score, $session_data) {
+function quiz_end_actions($quiz, $score, $session_data) {
   // Lets piggy back here to perform the quiz defined action since were done
   // with this quiz.
   // We will verify that there is an associated action with this quiz and then
@@ -2722,7 +2722,7 @@ function quiz_availability($quiz) {
       array('%num_attempts' => $quiz->takes));
   }
 
-  $user_is_admin = user_access('edit any quiz') || (user_access('edit own quiz') && $quiz->uid == $user->uid);
+  $user_is_admin = user_access('edit any quiz content') || (user_access('edit own quiz content') && $quiz->uid == $user->uid);
   if ($user_is_admin || $quiz->quiz_always == 1) {
     return TRUE;
   }

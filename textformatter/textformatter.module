@@ -46,6 +46,7 @@ function textformatter_field_formatter_info() {
         'textformatter_separator_custom' => '',
         'textformatter_separator_custom_tag' => 'span',
         'textformatter_separator_custom_class' => 'textformatter-separator',
+        'textformatter_contrib' => array(),
       ),
     ),
   );
@@ -176,6 +177,13 @@ function textformatter_field_formatter_settings_form($field, $instance, $view_mo
     );
   }
 
+  $context = array(
+    'field' => $field,
+    'instance' => $instance,
+    'view_mode' => $view_mode
+  );
+  drupal_alter('textformatter_field_formatter_settings_form', $form, $form_state, $context);
+
   return $form;
 }
 
@@ -234,50 +242,19 @@ function textformatter_field_formatter_settings_summary($field, $instance, $view
  * Implements hook_field_formatter_view().
  */
 function textformatter_field_formatter_view($entity_type, $entity, $field, $instance, $langcode, $items, $display) {
-  $settings = $display['settings'];
-  $element = array();
-
   if ($display['type'] == 'textformatter_list') {
-    $list_items = array();
-    // For long text fields, use each line as a list item, removing empty lines.
-    if ($field['type'] == 'text_long') {
-      foreach ($items as $delta => $item) {
-        // Explode on new line char, trim whitespace (if any), then array filter (So any empty lines will actually be removed).
-        $long_text_items = array_filter(array_map('trim', explode("\n", $item['value'])));
-        foreach ($long_text_items as $long_text_item) {
-          // @see _text_sanitize(), text.module
-          $list_items[] = ($instance['settings']['text_processing'] ? check_markup($long_text_item, $item['format'], $langcode) : check_plain($long_text_item));
-        }
-      }
-    }
-    elseif ($field['module'] == 'list') {
-      $allowed_values = list_allowed_values($field);
-      foreach ($items as $delta => $item) {
-        if (isset($allowed_values[$item['value']])) {
-          $list_items[$delta] = field_filter_xss($allowed_values[$item['value']]);
-        }
-      }
-    }
-    elseif ($field['module'] == 'taxonomy') {
-      $tids = array();
-      foreach ($items as $item) { 
-        $tids[] = $item['tid']; 
-      }
-      $terms = taxonomy_term_load_multiple($tids);
+    $textformatters = textformatter_field_list_info();
+    $settings = $display['settings'];
+    $module = $field['module'];
+    $element = $list_items = array();
 
-      foreach ($items as $delta => $item) {
-        // Check if we should display as term links or not.
-        if ($settings['textformatter_term_plain']) {
-          $list_items[$delta] = check_plain($terms[$item['tid']]->name);
-        }
-        else {
-          $list_items[$delta] = l($terms[$item['tid']]->name, 'taxonomy/term/' . $item['tid']);
-        }
-      }
+    if (isset($textformatters[$module]) && in_array($field['type'], $textformatters[$module]['fields'])) {
+      $function = $textformatters[$module]['callback'];
+      $list_items = $function($entity_type, $entity, $field, $instance, $langcode, $items, $display);
     }
     else {
       foreach ($items as $delta => $item) {
-        $list_items[$delta] = check_plain($item['value']);
+        $list_items = textformatter_default_field_create_list($entity_type, $entity, $field, $instance, $langcode, $items, $display);
       }
     }
 
@@ -347,8 +324,10 @@ function theme_textformatter_comma($variables) {
   if ($settings['textformatter_comma_override']) {
     $sep = check_plain($settings['textformatter_separator_custom']);
     $tag = $settings['textformatter_separator_custom_tag'];
-    $class = $settings['textformatter_separator_custom_class'];
-    $separator = "<$tag class=\"$class\">$sep</$tag>";
+    if ($tag) {
+      $class = $settings['textformatter_separator_custom_class'];
+      $separator = "<$tag class=\"$class\">$sep</$tag>";
+    }
   }
   // Generate a comma-separated list.
   $output = implode($separator, $items) . $last;
@@ -368,20 +347,163 @@ function theme_textformatter_comma($variables) {
 }
 
 /**
+ * Wrapper function for invoking hook_textformatter_field_list_info.
+ * statically caches $info as this could get called multiple times
+ * for different fields using this formatter.
+ */
+function textformatter_field_list_info() {
+  $info = &drupal_static(__FUNCTION__);
+
+  if (empty($info)) {
+    $info = module_invoke_all('textformatter_field_info');
+    drupal_alter('textformatter_field_info', $info);
+  }
+
+  return $info;
+}
+
+/**
+ * Implements hook_textformatter_field_info().
+ */
+function textformatter_textformatter_field_info() {
+  $info = array();
+
+  $info['text'] = array(
+    'fields' => array('text', 'text_long'),
+    'callback' => 'textformatter_text_field_create_list',
+  );
+  $info['number'] = array(
+    'fields' => array('number_integer', 'number_decimal', 'number_float'),
+    'callback' => 'textformatter_default_field_create_list',
+  );
+  $info['list'] = array(
+    'fields' => array('list_float', 'list_integer', 'list_text'),
+    'callback' => 'textformatter_list_field_create_list',
+  );
+  $info['taxonomy'] = array(
+    'fields' => array('taxonomy_term_reference'),
+    'callback' => 'textformatter_taxonomy_field_create_list',
+  );
+
+  return $info;
+}
+
+/**
+ * Default listing callback.
+ */
+function textformatter_default_field_create_list($entity_type, $entity, $field, $instance, $langcode, $items, $display) {
+  $list_items = array();
+  $value_key = _textformatter_get_field_value_key($field);
+
+  foreach ($items as $delta => $item) {
+    $list_items[$delta] = check_plain($item[$value_key]);
+  }
+
+  return $list_items;
+}
+
+/**
+ * Create list for text fields.
+ */
+function textformatter_text_field_create_list($entity_type, $entity, $field, $instance, $langcode, $items, $display) {
+  $settings = $display['settings'];
+  $list_items = array();
+
+  if ($field['type'] == 'text_long') {
+    foreach ($items as $delta => $item) {
+      // Explode on new line char, trim whitespace (if any), then array filter (So any empty lines will actually be removed).
+      $long_text_items = array_filter(array_map('trim', explode("\n", $item['value'])));
+      foreach ($long_text_items as $long_text_item) {
+        // @see _text_sanitize(), text.module
+        $list_items[] = ($instance['settings']['text_processing'] ? check_markup($long_text_item, $item['format'], $langcode) : field_filter_xss($long_text_item));
+      }
+    }
+  }
+  else {
+    foreach ($items as $delta => $item) {
+      $list_items[] = ($item['format'] ? check_markup($item['value'], $item['format'], $langcode) : field_filter_xss($item['value']));
+    }
+  }
+
+  return $list_items;
+}
+
+/**
+ * Create list for list fields.
+ */
+function textformatter_list_field_create_list($entity_type, $entity, $field, $instance, $langcode, $items, $display) {
+  $settings = $display['settings'];
+  $list_items = array();
+
+  $allowed_values = list_allowed_values($field);
+  foreach ($items as $delta => $item) {
+    if (isset($allowed_values[$item['value']])) {
+      $list_items[$delta] = field_filter_xss($allowed_values[$item['value']]);
+    }
+  }
+
+  return $list_items;
+}
+
+/**
+ * Create list for taxonomy reference fields.
+ */
+function textformatter_taxonomy_field_create_list($entity_type, $entity, $field, $instance, $langcode, $items, $display) {
+  $settings = $display['settings'];
+  $list_items = array();
+
+  $tids = array();
+
+  foreach ($items as $item) { 
+    $tids[] = $item['tid']; 
+  }
+
+  $terms = taxonomy_term_load_multiple($tids);
+
+  foreach ($items as $delta => $item) {
+    $term_name = ($item['tid'] === 'autocreate') ? $item['name'] : $terms[$item['tid']]->name;
+    // Check if we should display as term links or not.
+    if ($settings['textformatter_term_plain'] || ($item['tid'] === 'autocreate')) {
+      $list_items[$delta] = check_plain($term_name);
+    }
+    else {
+      $uri = entity_uri('taxonomy_term', $terms[$item['tid']]);
+      $list_items[$delta] = l($term_name, $uri['path']);
+    }
+  }
+
+  return $list_items;
+}
+
+/**
  * Helper to return array of field types that textformatter display formatter can be used on.
  */
 function _textformatter_field_types() {
-  return array(
-    'text',
-    'text_long',
-    'number_integer',
-    'number_decimal',
-    'number_float',
-    'list_float',
-    'list_integer', 
-    'list_text',
-    'taxonomy_term_reference',
-  );
+  // Invokes hook_textformatter_field_info
+  $textformatter_info = textformatter_field_list_info();
+  $fields = array();
+
+  // Create array of all field types.
+  foreach ($textformatter_info as $module => $info) {
+    foreach ($info['fields'] as $field) {
+      $fields[] = $field;
+    }
+  }
+
+  return $fields;
+}
+
+/**
+ * Helper to return the value key for a field instance.
+ *
+ * @param $field
+ *  The whole array of field instance info provided by the field api.
+ *
+ * @return
+ *  (string) value key for the field.
+ */
+function _textformatter_get_field_value_key(array $field) {
+  return (array_key_exists('columns', $field) && is_array($field['columns'])) ? key($field['columns']) : 'value';
 }
 
 /**

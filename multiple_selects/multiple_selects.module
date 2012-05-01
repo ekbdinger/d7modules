@@ -40,7 +40,7 @@ function multiple_selects_field_widget_info() {
   return array(
     'multiple_selects' => array(
       'label' => t('Multiple Selects list'),
-      'field types' => array('taxonomy_term_reference', 'list_integer', 'list_float', 'list_text'),
+      'field types' => array('entity_reference', 'node_reference', 'user_reference', 'taxonomy_term_reference', 'list_integer', 'list_float', 'list_text'),
     ),
   );
 }
