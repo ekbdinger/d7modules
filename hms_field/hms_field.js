@@ -121,7 +121,7 @@ Drupal.behaviors.hmsfield = {
     if (hms_timer) {
       window.clearInterval(hms_timer);
     }
-  },
+  }
 };
 
 })(jQuery);
